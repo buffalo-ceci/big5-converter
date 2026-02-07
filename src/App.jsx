@@ -94,7 +94,16 @@ function App() {
 
     // Create a temporary container to render HTML for PDF
     const element = document.createElement('div');
-    element.innerHTML = fileObj.utf8Content;
+    // Inject CSS to ensure table borders are visible in PDF
+    const style = `
+      <style>
+        table { border-collapse: collapse; width: 100%; }
+        table, th, td { border: 1px solid black; }
+        th, td { padding: 4px; }
+      </style>
+    `;
+    element.innerHTML = style + fileObj.utf8Content;
+
     // Apply some basic styles to ensure it looks okay in PDF
     element.style.fontFamily = 'Arial, sans-serif';
     element.style.fontSize = '12pt';
@@ -102,7 +111,7 @@ function App() {
 
     const opt = {
       margin: 10,
-      filename: `${fileObj.name.replace('.html', '')}.pdf`,
+      filename: `${fileObj.name.substring(0, fileObj.name.lastIndexOf('.')) || fileObj.name}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
