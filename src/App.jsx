@@ -97,10 +97,12 @@ function App() {
     // Inject CSS to ensure table borders are visible in PDF
     const style = `
       <style>
+        body, div, table, th, td, p, span { color: #000000 !important; }
         table { border-collapse: collapse; width: 100%; }
         table, th, td { border: 1px solid black; }
         th, td { padding: 4px; }
       </style>
+
     `;
     element.innerHTML = style + fileObj.utf8Content;
 
