@@ -23,14 +23,23 @@ function App() {
     processFiles(newFiles);
   };
 
-  // Process files: Read as Big5 -> Convert to UTF-8
+  // Process files: Read and detect encoding -> Convert to UTF-8
   const processFiles = async (fileList) => {
     for (const fileObj of fileList) {
       try {
         updateFileStatus(fileObj.id, 'converting');
         const buffer = await fileObj.original.arrayBuffer();
-        const decoder = new TextDecoder('big5');
-        let decodedText = decoder.decode(buffer);
+        let decodedText = '';
+
+        // Try decoding as UTF-8 first (it throws if it's invalid UTF-8 and fatal is true)
+        try {
+          const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+          decodedText = utf8Decoder.decode(buffer);
+        } catch (e) {
+          // If it fails, it's likely Big5 so we decode it using Big5
+          const big5Decoder = new TextDecoder('big5');
+          decodedText = big5Decoder.decode(buffer);
+        }
 
         // Fix: Replace charset meta tags in the HTML to specific UTF-8
         // Covers: <meta charset="big5"> and <meta http-equiv="Content-Type" content="... charset=big5">
@@ -74,18 +83,30 @@ function App() {
     }
   };
 
-  // Download single UTF-8 file
+  // Download single UTF-8 and Big5 files separately
   const downloadFile = (fileObj) => {
     if (!fileObj.utf8Content) return;
-    const blob = new Blob([fileObj.utf8Content], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `utf8_${fileObj.name}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+
+    // 1. Download UTF-8 converted file (original name)
+    const utf8Blob = new Blob([fileObj.utf8Content], { type: 'text/html;charset=utf-8' });
+    const utf8Url = URL.createObjectURL(utf8Blob);
+    const a1 = document.createElement('a');
+    a1.href = utf8Url;
+    a1.download = fileObj.name;
+    document.body.appendChild(a1);
+    a1.click();
+    document.body.removeChild(a1);
+    URL.revokeObjectURL(utf8Url);
+
+    // 2. Download Original Big5 file (big5- prefix)
+    const big5Url = URL.createObjectURL(fileObj.original);
+    const a2 = document.createElement('a');
+    a2.href = big5Url;
+    a2.download = `big5-${fileObj.name}`;
+    document.body.appendChild(a2);
+    a2.click();
+    document.body.removeChild(a2);
+    URL.revokeObjectURL(big5Url);
   };
 
   // Download PDF
@@ -125,11 +146,43 @@ function App() {
   // Download All as Zip
   const downloadAllZip = async () => {
     const zip = new JSZip();
-    files.forEach(f => {
+
+    const zipPromises = files.map(async (f) => {
       if (f.status === 'done' && f.utf8Content) {
-        zip.file(`utf8_${f.name}`, f.utf8Content);
+        // Add UTF-8 HTML
+        zip.file(f.name, f.utf8Content);
+        // Add original Big5 HTML
+        zip.file(`big5-${f.name}`, f.original);
+
+        // Generate PDF
+        const element = document.createElement('div');
+        const style = `
+          <style>
+            table { border-collapse: collapse; width: 100%; }
+            table, th, td { border: 1px solid black; }
+            th, td { padding: 4px; }
+          </style>
+        `;
+        element.innerHTML = style + f.utf8Content;
+        // Apply some basic styles to ensure it looks okay in PDF
+        element.style.fontFamily = 'Arial, sans-serif';
+        element.style.fontSize = '12pt';
+        element.style.lineHeight = '1.5';
+
+        const opt = {
+          margin: 10,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2 },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        const pdfBlob = await html2pdf().set(opt).from(element).output('blob');
+        const pdfFilename = `${f.name.substring(0, f.name.lastIndexOf('.')) || f.name}.pdf`;
+        zip.file(pdfFilename, pdfBlob);
       }
     });
+
+    await Promise.all(zipPromises);
 
     const content = await zip.generateAsync({ type: "blob" });
     const url = URL.createObjectURL(content);
@@ -204,7 +257,7 @@ function App() {
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   {file.status === 'done' && (
                     <>
-                      <button onClick={(e) => { e.stopPropagation(); downloadFile(file); }} title="Download UTF-8 HTML">
+                      <button onClick={(e) => { e.stopPropagation(); downloadFile(file); }} title="Download HTML">
                         <FileDown size={18} />
                       </button>
                       <button onClick={(e) => { e.stopPropagation(); downloadPDF(file); }} title="Export PDF">
