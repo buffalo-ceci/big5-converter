@@ -151,13 +151,12 @@ function App() {
       if (f.status === 'done' && f.utf8Content) {
         // Add UTF-8 HTML
         zip.file(f.name, f.utf8Content);
-        // Add original Big5 HTML
-        zip.file(`big5-${f.name}`, f.original);
 
         // Generate PDF
         const element = document.createElement('div');
         const style = `
           <style>
+            body, div, table, th, td, p, span { color: #000000 !important; }
             table { border-collapse: collapse; width: 100%; }
             table, th, td { border: 1px solid black; }
             th, td { padding: 4px; }
